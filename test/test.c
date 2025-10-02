@@ -126,6 +126,8 @@ static char *  vcodec              = NULL;
 static int     audio_all                 = -1;
 static char ** audio_copy_list           = NULL;
 static char ** audio_lang_list           = NULL;
+static int     audio_bitrate_map_disable = 0;
+static char *  audio_bitrate_map         = NULL;
 static char ** atracks                   = NULL;
 static char ** acodecs                   = NULL;
 static char ** abitrates                 = NULL;
@@ -1690,6 +1692,19 @@ static void ShowHelp(void)
 "                           Disable the source audio track(s) name(s) passthru.\n"
 "   -A, --aname <string>    Set audio track name(s).\n"
 "                           Separate tracks by commas.\n"
+"   --audio-bitrate-map <string>\n"
+"                           Set audio bitrate map.\n"
+"                           Example: \"2=128:6=256:8=384\"\n"
+"\n"
+"                           Means:\n"
+"                           2 channels = 128 kbit\n"
+"                           6 channels = 256 kbit\n"
+"                           8 channels = 384 kbit\n"
+"\n"
+"                           Channel count must be within 1-8 and bitrate must be non-zero."
+"\n"
+"   --no-audio-bitrate-map\n"
+"                           Disable audio bitrate map. (default behaviour) \n"
 "\n"
 "\n"
 "Picture Options --------------------------------------------------------------\n"
@@ -2274,6 +2289,7 @@ static int ParseOptions( int argc, char ** argv )
     #define HDR_DYNAMIC_METADATA          334
     #define AUDIO_AUTONAMING_BEHAVIOUR    335
     #define COLOR_RANGE                   336
+    #define AUDIO_BITRATE_MAP             337
 
     for( ;; )
     {
@@ -2471,6 +2487,8 @@ static int ParseOptions( int argc, char ** argv )
             { "audio-copy-mask", required_argument, NULL, ALLOWED_AUDIO_COPY },
             { "audio-fallback",  required_argument, NULL, AUDIO_FALLBACK },
             { "json",        no_argument,       NULL,    JSON_LOGGING },
+            { "audio-bitrate-map", required_argument, NULL, AUDIO_BITRATE_MAP },
+            { "no-audio-bitrate-map", no_argument, &audio_bitrate_map_disable, 0 },
             { 0, 0, 0, 0 }
           };
 
@@ -3335,6 +3353,17 @@ static int ParseOptions( int argc, char ** argv )
                     audio_autonaming_behaviour = strdup(AUDIO_AUTONAMING_BEHAVIOUR_DEFAULT_PRESET);
                 }
                 break;
+            case AUDIO_BITRATE_MAP:
+                free(audio_bitrate_map);
+                if (optarg != NULL)
+                {
+                    audio_bitrate_map = strdup(optarg);
+                }
+                else
+                {
+                    audio_bitrate_map = NULL;
+                }
+                break;
             case ':':
                 fprintf( stderr, "missing parameter (%s)\n", argv[cur_optind] );
                 return -1;
@@ -3681,6 +3710,14 @@ static int ParseOptions( int argc, char ** argv )
             return -1;
         }
     }
+    
+    if (audio_bitrate_map != NULL)
+    {
+        if (hb_audio_validate_bitrate_map_string(audio_bitrate_map)) {
+            fprintf(stderr, "Invalid audio bitrate map option %s\n", audio_bitrate_map);
+            return -1;
+        }
+    }
 
     return 0;
 }
@@ -4005,6 +4042,12 @@ static hb_dict_t * PreparePreset(const char *preset_name)
         }
         hb_dict_set(preset, "AudioCopyMask", array);
     }
+    
+    if (audio_bitrate_map != NULL)
+    {
+        hb_dict_set(preset, "AudioBitrateMap", hb_value_string(audio_bitrate_map));
+    }
+    
     if (acodec_fallback != NULL)
     {
         hb_dict_set(preset, "AudioEncoderFallback",

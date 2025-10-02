@@ -1799,6 +1799,7 @@ static void hb_add_internal( hb_handle_t * h, hb_job_t * job, hb_list_t *list_pa
     job_copy->list_subtitle   = NULL;
     job_copy->list_filter     = NULL;
     job_copy->list_attachment = NULL;
+    job_copy->list_audio_bitrate_map = NULL;
     job_copy->metadata        = NULL;
 
 #if HB_PROJECT_FEATURE_QSV
@@ -1867,6 +1868,7 @@ static void hb_add_internal( hb_handle_t * h, hb_job_t * job, hb_list_t *list_pa
     job_copy->list_audio = hb_audio_list_copy( job->list_audio );
     job_copy->list_attachment = hb_attachment_list_copy( job->list_attachment );
     job_copy->metadata = hb_metadata_copy( job->metadata );
+    job_copy->list_audio_bitrate_map = hb_audio_bitrate_map_list_copy(job->list_audio_bitrate_map);
 
     if (job->encoder_preset != NULL)
         job_copy->encoder_preset = strdup(job->encoder_preset);

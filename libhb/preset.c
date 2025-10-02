@@ -1009,6 +1009,12 @@ int hb_preset_job_add_audio(hb_handle_t *h, int title_index,
             fallback = hb_value_get_int(fallback_value);
         }
     }
+
+    hb_value_t *bitrate_map_arg = hb_dict_get(preset, "AudioBitrateMap");
+    const char *bitrate_map_arg_string = hb_value_get_string(bitrate_map_arg);
+    hb_value_array_t *bitrate_map = hb_parse_audio_bitrate_map(bitrate_map_arg_string);
+    hb_dict_set(audio_dict, "AudioBitrateMap", bitrate_map);
+
     if (validate_audio_encoders(preset) < 0)
         return -1;
 

@@ -487,6 +487,13 @@ const hb_rate_t* hb_audio_samplerate_get_next(const hb_rate_t *last);
 const hb_rate_t* hb_audio_samplerate_get_next_for_codec(const hb_rate_t *last,
                                                         uint32_t codec);
 
+int              hb_audio_validate_bitrate_map_string(const char *arg);
+hb_value_array_t* hb_parse_audio_bitrate_map(const char *bitrate_map_string);
+int              hb_audio_bitrate_get_map_override(int channels, hb_job_t *job);
+void             hb_audio_bitrate_mapping_close(hb_audio_bitrate_mapping_t **mapping);
+hb_list_t        *hb_audio_bitrate_map_list_copy(const hb_list_t *src);
+hb_audio_bitrate_mapping_t *hb_audio_bitrate_mapping_copy(const hb_audio_bitrate_mapping_t *src);
+
 int              hb_audio_bitrate_get_best(uint32_t codec, int bitrate, int samplerate, int mixdown);
 int              hb_audio_bitrate_get_default(uint32_t codec, int samplerate, int mixdown);
 void             hb_audio_bitrate_get_limits(uint32_t codec, int samplerate, int mixdown, int *low, int *high);
@@ -849,6 +856,7 @@ struct hb_job_s
     hb_list_t     * list_audio;
     int             acodec_copy_mask; // Auto Passthru allowed codecs
     int             acodec_fallback;  // Auto Passthru fallback encoder
+    hb_list_t     * list_audio_bitrate_map;
 
     /* Subtitles */
     hb_list_t     * list_subtitle;
@@ -1127,6 +1135,13 @@ struct hb_audio_s
     } priv;
 };
 #endif
+
+// Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_audio_s.cs when changing this struct
+struct hb_audio_bitrate_mapping_s
+{
+    int channels;
+    int bitrate;
+};
 
 // Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_chapter_s.cs when changing this struct
 struct hb_chapter_s

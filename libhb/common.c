@@ -1135,6 +1135,44 @@ static int hb_audio_bitrate_find_closest(int bitrate)
     return closest_bitrate;
 }
 
+int hb_audio_validate_bitrate_map_string(const char *arg)
+{
+    char *map_str = strdup(arg);
+    if (!map_str)
+        return 1;
+
+    char *token = strtok(map_str, ":");
+    while (token)
+    {
+        int ch = 0, br = 0;
+        if (sscanf(token, "%d=%d", &ch, &br) != 2)
+        {
+            hb_log("hb_audio_validate_bitrate_map_string: Invalid entry in bitrate map: '%s'\n", token);
+            free(map_str);
+            return 1;
+        }
+
+        if (ch < 1 || ch > 8)
+        {
+            hb_log("hb_audio_validate_bitrate_map_string: Invalid channel count in bitrate map: %d (must be 1-8)\n", ch);
+            free(map_str);
+            return 1;
+        }
+
+        if (br <= 0)
+        {
+            hb_log("hb_audio_validate_bitrate_map_string: Invalid bitrate in bitrate map: %d (must be >0)\n", br);
+            free(map_str);
+            return 1;
+        }
+
+        token = strtok(NULL, ":");
+    }
+
+    free(map_str);
+    return 0;
+}
+
 // Given an input bitrate, sanitize it.
 // Check low and high limits and make sure it is in the set of allowed bitrates.
 int hb_audio_bitrate_get_best(uint32_t codec, int bitrate, int samplerate,
@@ -4664,6 +4702,7 @@ static void job_setup(hb_job_t * job, hb_title_t * title)
     job->list_audio = hb_list_init();
     job->list_subtitle = hb_list_init();
     job->list_filter = hb_list_init();
+    job->list_audio_bitrate_map = hb_list_init();
 
     job->list_attachment = hb_attachment_list_copy( title->list_attachment );
     job->metadata = hb_metadata_copy( title->metadata );
@@ -4708,7 +4747,8 @@ static void job_clean( hb_job_t * job )
         hb_subtitle_t *subtitle;
         hb_filter_object_t *filter;
         hb_attachment_t *attachment;
-
+        hb_audio_bitrate_mapping_t *mapping;
+        
         free((void*)job->json);
         job->json = NULL;
         free(job->encoder_preset);
@@ -4741,6 +4781,14 @@ static void job_clean( hb_job_t * job )
             hb_audio_close( &audio );
         }
         hb_list_close( &job->list_audio );
+
+        // clean up audio bitrate map list
+        while( ( mapping = hb_list_item( job->list_audio_bitrate_map, 0 ) ) )
+        {
+            hb_list_rem( job->list_audio_bitrate_map, mapping );
+            hb_audio_bitrate_mapping_close( &mapping );
+        }
+        hb_list_close( &job->list_audio_bitrate_map );
 
         // clean up subtitle list
         while( ( subtitle = hb_list_item( job->list_subtitle, 0 ) ) )
@@ -5760,6 +5808,121 @@ hb_audio_config_t * hb_list_audio_config_item(hb_list_t * list, int i)
         return &(audio->config);
 
     return NULL;
+}
+
+/**********************************************************************
+ * hb_parse_audio_bitrate_map
+ **********************************************************************
+ *
+ *********************************************************************/
+hb_value_array_t * hb_parse_audio_bitrate_map(const char *bitrate_map_string)
+{
+    hb_value_array_t *br_map_array = hb_value_array_init();
+
+    if (bitrate_map_string == NULL || !strcasecmp(bitrate_map_string, "off"))
+    {
+        return br_map_array;
+    }
+
+    char *map_str = strdup(bitrate_map_string);
+    char *token = strtok(map_str, ":");
+    while (token)
+    {
+        int ch = 0, br = 0;
+        if (sscanf(token, "%d=%d", &ch, &br) == 2 && ch > 1 && ch < 9 && br > 0)
+        {
+            hb_dict_t *entry = hb_dict_init();
+            hb_dict_set(entry, "Channels", hb_value_int(ch));
+            hb_dict_set(entry, "Bitrate", hb_value_int(br));
+            hb_value_array_append(br_map_array, entry);
+        }
+
+        token = strtok(NULL, ":");
+    }
+
+    free(map_str);
+
+    return br_map_array;
+}
+
+/**********************************************************************
+ * hb_audio_bitrate_map_list_copy
+ **********************************************************************
+ *
+ *********************************************************************/
+hb_list_t *hb_audio_bitrate_map_list_copy(const hb_list_t *src)
+{
+    hb_list_t *list = hb_list_init();
+    hb_audio_bitrate_mapping_t *mapping = NULL;
+    int i;
+
+    if( src )
+    {
+        for( i = 0; i < hb_list_count(src); i++ )
+        {
+            if( ( mapping = hb_list_item( src, i ) ) )
+            {
+                hb_list_add( list, hb_audio_bitrate_mapping_copy(mapping) );
+            }
+        }
+    }
+    return list;
+}
+
+/**********************************************************************
+ * hb_audio_bitrate_mapping_copy
+ **********************************************************************
+ *
+ *********************************************************************/
+hb_audio_bitrate_mapping_t *hb_audio_bitrate_mapping_copy(const hb_audio_bitrate_mapping_t *src)
+{
+    if (!src)
+        return NULL;
+
+    hb_audio_bitrate_mapping_t *mapping = malloc(sizeof(*mapping));
+    mapping->channels = src->channels;
+    mapping->bitrate  = src->bitrate;
+    return mapping;
+}
+
+/**********************************************************************
+ * hb_audio_bitrate_get_map_override
+ **********************************************************************
+ *
+ *********************************************************************/
+int hb_audio_bitrate_get_map_override(int channels, hb_job_t *job)
+{
+    if (!job || !job->list_audio_bitrate_map || channels <= 0)
+        return 0;
+
+    int count = hb_list_count(job->list_audio_bitrate_map);;
+
+    for (int i = 0; i < count; i++)
+    {
+        hb_audio_bitrate_mapping_t *mapping = hb_list_item(job->list_audio_bitrate_map, i);
+
+        if (!mapping)
+            continue;
+
+        if (mapping->channels == channels)
+            return mapping->bitrate;
+    }
+
+    return 0;
+}
+
+/**********************************************************************
+ * hb_audio_bitrate_mapping_close
+ **********************************************************************
+ *
+ *********************************************************************/
+void hb_audio_bitrate_mapping_close(hb_audio_bitrate_mapping_t **mapping)
+{
+    if (mapping && *mapping)
+    {
+        free(*mapping);
+        *mapping = NULL;
+    }
 }
 
 /**********************************************************************

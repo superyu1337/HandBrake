@@ -29,6 +29,7 @@ typedef struct hb_title_set_s hb_title_set_t;
 typedef struct hb_title_s hb_title_t;
 typedef struct hb_chapter_s hb_chapter_t;
 typedef struct hb_audio_s hb_audio_t;
+typedef struct hb_audio_bitrate_mapping_s hb_audio_bitrate_mapping_t;
 typedef struct hb_audio_config_s hb_audio_config_t;
 typedef struct hb_subtitle_s hb_subtitle_t;
 typedef struct hb_subtitle_config_s hb_subtitle_config_t;

@@ -611,8 +611,8 @@ hb_dict_t* hb_job_to_dict( const hb_job_t * job )
     "s:{s:o, s:o},"
     // Video {Encoder, HardwareDecode, AdapterIndex, AsyncDepth}
     "s:{s:o, s:o, s:o, s:o},"
-    // Audio {CopyMask, FallbackEncoder, AudioList []}
-    "s:{s:[], s:o, s:[]},"
+    // Audio {CopyMask, FallbackEncoder, AudioList [], AudioBitrateMap []}
+    "s:{s:[], s:o, s:[], s:[]},"
     // Subtitles {Search {Enable, Forced, Default, Burn}, SubtitleList []}
     "s:{s:{s:o, s:o, s:o, s:o}, s:[]},"
     // Metadata
@@ -645,6 +645,7 @@ hb_dict_t* hb_job_to_dict( const hb_job_t * job )
             "CopyMask",
             "FallbackEncoder",  hb_value_int(job->acodec_fallback),
             "AudioList",
+            "AudioBitrateMap",
         "Subtitle",
             "Search",
                 "Enable",       hb_value_bool(job->indepth_scan),
@@ -942,6 +943,21 @@ hb_dict_t* hb_job_to_dict( const hb_job_t * job )
         hb_value_array_append(audio_list, audio_dict);
     }
 
+    // process audio bitrate map
+    hb_dict_t *audio_bitrate_map = hb_dict_get(audios_dict, "AudioBitrateMap");
+    for (ii = 0; ii < hb_list_count(job->list_audio_bitrate_map); ii++)
+    {
+        hb_dict_t *audio_bitrate_map_dict;
+        hb_audio_bitrate_mapping_t *bitrate_mapping = hb_list_item(job->list_audio_bitrate_map, ii);
+
+        audio_bitrate_map_dict = json_pack_ex(&error, 0,
+            "{s:o, s:o}",
+            "Channels",             hb_value_int(bitrate_mapping->channels),
+            "Bitrate",              hb_value_int(bitrate_mapping->bitrate));
+        
+        hb_value_array_append(audio_bitrate_map, audio_bitrate_map_dict);
+    }
+
     // process subtitle list
     hb_dict_t *subtitles_dict = hb_dict_get(dict, "Subtitle");
     if (job->select_subtitle_config.external_filename != NULL)
@@ -1145,6 +1161,7 @@ hb_job_t* hb_dict_to_job( hb_handle_t * h, hb_dict_t *dict )
 
     hb_value_array_t * chapter_list = NULL;
     hb_value_array_t * audio_list = NULL;
+    hb_value_array_t * audio_bitrate_map = NULL;
     hb_value_array_t * subtitle_list = NULL;
     hb_value_array_t * filter_list = NULL;
     hb_value_t       * mux = NULL, * vcodec = NULL;
@@ -1196,8 +1213,8 @@ hb_job_t* hb_dict_to_job( hb_handle_t * h, hb_dict_t *dict )
     "   s?o,"
     "   s?i, s?i, s?i,"
     "   s?i, s?i, s?i},"
-    // Audio {CopyMask, FallbackEncoder, AudioList}
-    "s?{s?o, s?o, s?o},"
+    // Audio {CopyMask, FallbackEncoder, AudioList, AudioBitrateMap}
+    "s?{s?o, s?o, s?o, s?o},"
     // Subtitle {Search {Enable, Forced, Default, Burn, ExternalFilename}, SubtitleList}
     "s?{s?{s:b, s?b, s?b, s?b, s?s}, s?o},"
     // Metadata
@@ -1261,6 +1278,7 @@ hb_job_t* hb_dict_to_job( hb_handle_t * h, hb_dict_t *dict )
             "CopyMask",             unpack_o(&acodec_copy_mask),
             "FallbackEncoder",      unpack_o(&acodec_fallback),
             "AudioList",            unpack_o(&audio_list),
+            "AudioBitrateMap",      unpack_o(&audio_bitrate_map),
         "Subtitle",
             "Search",
                 "Enable",           unpack_b(&job->indepth_scan),
@@ -1691,6 +1709,38 @@ hb_job_t* hb_dict_to_job( hb_handle_t * h, hb_dict_t *dict )
                 hb_audio_add(job, &audio);
             }
             hb_audio_config_close(&audio);
+        }
+    }
+
+    if (audio_bitrate_map != NULL && hb_value_type(audio_bitrate_map) == HB_VALUE_TYPE_ARRAY)
+    {
+        int ii, count;
+        hb_dict_t *bitrate_map_dict;
+        count = hb_value_array_len(audio_bitrate_map);
+
+        for (int ii = 0; ii < count; ii++)
+        {
+            bitrate_map_dict = hb_value_array_get(audio_bitrate_map, ii);
+            hb_audio_bitrate_mapping_t* mapping = malloc(sizeof(hb_audio_bitrate_mapping_t));
+
+            hb_value_t *channel = NULL, *bitrate = NULL;
+
+            mapping->channels = 0;
+            mapping->bitrate = 0;
+            result = json_unpack_ex(bitrate_map_dict, &error, 0,
+                "{s:i, s:i}",
+                "Bitrate",             unpack_i(&mapping->bitrate),
+                "Channels",            unpack_i(&mapping->channels));
+            
+            if (result < 0)
+            {
+                hb_error("hb_dict_to_job: failed to find audio bitrate mapping: %s",
+                         error.text);
+                free(mapping);
+                goto fail;
+            }
+
+            hb_list_add(job->list_audio_bitrate_map, mapping);
         }
     }
 
