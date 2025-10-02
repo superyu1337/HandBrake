@@ -228,9 +228,14 @@ static int encavcodecaInit(hb_work_object_t *w, hb_job_t *job)
         int bitrate_override = hb_audio_bitrate_get_map_override(out_ch_layout.nb_channels, job);
 
         if (bitrate_override != 0)
-            hb_log("Bitrate override based on channel count! mapped %d channels to %s kbit!", 
-            out_ch_layout.nb_channels, bitrate_override);
+        {
+            hb_log(
+                "Bitrate override based on channel count! mapped %d channels to %d kbit!", 
+                out_ch_layout.nb_channels,
+                bitrate_override
+            );
             context->bit_rate = bitrate_override * 1000;
+        }
         else
             context->bit_rate = audio->config.out.bitrate * 1000;
     }
